@@ -1,35 +1,73 @@
+local GunServer = {}
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local AmmoHandler = require(ReplicatedStorage:WaitForChild("GunSystem"):WaitForChild("AmmoHandler"))
-local GunConfig = require(ReplicatedStorage:WaitForChild("GunSystem"):WaitForChild("GunConfig"))
-local ReloadEvent = ReplicatedStorage:WaitForChild("ReloadEvent")
-local AmmoUpdateEvent = ReplicatedStorage:WaitForChild("AmmoUpdateEvent")
-local FireEvent = ReplicatedStorage:WaitForChild("FireEvent")
+local Debris = game:GetService("Debris")
 
-FireEvent.OnServerEvent:Connect(function(player, toolName)
-    local config = GunConfig[toolName]
-    if not config then return end
+local GunConfig = require(ReplicatedStorage:WaitForChild("GunConfig"))
+local FireEvent = ReplicatedStorage:WaitForChild("FireEvent") -- RemoteEvent
+local ReloadEvent = ReplicatedStorage:WaitForChild("ReloadEvent") -- RemoteEvent
 
-    local current, reserve = AmmoHandler.GetAmmo(player, toolName)
-    if current <= 0 then return end
+-- Anti-spam fire delay tracker
+local lastFired = {}
 
-    AmmoHandler.SetAmmo(player, toolName, current - 1, reserve)
-    AmmoUpdateEvent:FireClient(player, toolName, current - 1, reserve)
+-- Helper function to apply damage
+local function applyDamage(target, damage, shooter)
+	if target and target:IsA("Humanoid") and target.Health > 0 then
+		target:TakeDamage(damage)
 
-    -- Bullet firing logic should go here
+		-- Optional: Tag for kill credit
+		local creator = Instance.new("ObjectValue")
+		creator.Name = "creator"
+		creator.Value = shooter
+		creator.Parent = target
+		Debris:AddItem(creator, 1)
+	end
+end
+
+-- Create visual bullet hit effect
+local function createHitEffect(position)
+	local part = Instance.new("Part")
+	part.Size = Vector3.new(0.2, 0.2, 0.2)
+	part.Position = position
+	part.Anchored = true
+	part.CanCollide = false
+	part.BrickColor = BrickColor.Red()
+	part.Material = Enum.Material.Neon
+	part.Name = "HitEffect"
+	part.Parent = workspace
+
+	Debris:AddItem(part, 0.3)
+end
+
+-- Handle remote fire call
+FireEvent.OnServerEvent:Connect(function(player, gunName, origin, direction)
+	if not gunName or not GunConfig[gunName] then return end
+	local now = tick()
+	local fireRate = 60 / GunConfig[gunName].rpm
+	lastFired[player] = lastFired[player] or 0
+	if now - lastFired[player] < fireRate then return end
+	lastFired[player] = now
+
+	local rayParams = RaycastParams.new()
+	rayParams.FilterDescendantsInstances = {player.Character}
+	rayParams.FilterType = Enum.RaycastFilterType.Blacklist
+	local result = workspace:Raycast(origin, direction.Unit * 1000, rayParams)
+
+	if result then
+		local hitPart = result.Instance
+		local hitHumanoid = hitPart:FindFirstAncestorWhichIsA("Model"):FindFirstChild("Humanoid")
+		if hitHumanoid then
+			applyDamage(hitHumanoid, GunConfig[gunName].damage, player)
+		end
+		createHitEffect(result.Position)
+	end
 end)
 
-ReloadEvent.OnServerEvent:Connect(function(player, toolName)
-    local config = GunConfig[toolName]
-    if not config then return end
-
-    local current, reserve = AmmoHandler.GetAmmo(player, toolName)
-    if current >= config.MaxAmmo or reserve <= 0 then return end
-
-    local needed = config.MaxAmmo - current
-    local toLoad = math.min(needed, reserve)
-
-    task.wait(config.ReloadTime)
-
-    AmmoHandler.SetAmmo(player, toolName, current + toLoad, reserve - toLoad)
-    AmmoUpdateEvent:FireClient(player, toolName, current + toLoad, reserve - toLoad)
+-- Optional reload sync logic
+ReloadEvent.OnServerEvent:Connect(function(player, gunName)
+	if not gunName or not GunConfig[gunName] then return end
+	-- Server-side reload logic, if needed
+	-- Mostly handled client-side unless you want to verify ammo
 end)
+
+return GunServer
