@@ -1,0 +1,55 @@
+local GunClientModule = {}
+
+-- Muzzle flash effect
+function GunClientModule.playMuzzleFlash(tool)
+	local muzzle = tool:FindFirstChild("Muzzle")
+	if muzzle then
+		local flash = Instance.new("PointLight")
+		flash.Brightness = 5
+		flash.Range = 8
+		flash.Color = Color3.fromRGB(255, 200, 150)
+		flash.Parent = muzzle
+
+		local particle = Instance.new("ParticleEmitter")
+		particle.Texture = "rbxassetid://258128463" -- Add your muzzle flash texture here
+		particle.Speed = NumberRange.new(0)
+		particle.Lifetime = NumberRange.new(0.1)
+		particle.Rate = 100
+		particle.LightEmission = 1
+		particle.Size = NumberSequence.new(0.2)
+		particle.Parent = muzzle
+
+		particle:Emit(1)
+
+		game:GetService("Debris"):AddItem(flash, 0.1)
+		game:GetService("Debris"):AddItem(particle, 0.1)
+	end
+end
+
+-- Fire sound
+function GunClientModule.playFireSound(tool)
+	local sound = tool:FindFirstChild("FireSound")
+	if not sound then
+		sound = Instance.new("Sound")
+		sound.Name = "FireSound"
+		sound.SoundId = "rbxassetid://131072128" -- Replace with your gunshot sound
+		sound.Volume = 1
+		sound.Parent = tool
+	end
+	sound:Play()
+end
+
+-- Reload sound
+function GunClientModule.playReloadSound(tool)
+	local sound = tool:FindFirstChild("ReloadSound")
+	if not sound then
+		sound = Instance.new("Sound")
+		sound.Name = "ReloadSound"
+		sound.SoundId = "rbxassetid://9118823109" -- Replace with your reload sound
+		sound.Volume = 1
+		sound.Parent = tool
+	end
+	sound:Play()
+end
+
+return GunClientModule
