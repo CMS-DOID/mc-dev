@@ -1,0 +1,106 @@
+local player = game.Players.LocalPlayer
+local tool = script.Parent
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UIS = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+
+local FireEvent = ReplicatedStorage:WaitForChild("FireEvent")
+local ReloadEvent = ReplicatedStorage:WaitForChild("ReloadEvent")
+local GunConfig = require(ReplicatedStorage:WaitForChild("GunConfig"))
+
+local GunClientModule = require(ReplicatedStorage:WaitForChild("GunClientModule"))
+
+-- GUI Management
+local screenGui = player:WaitForChild("PlayerGui"):WaitForChild("GunHUD")
+local firstPersonGui = screenGui:WaitForChild("FirstPerson")
+
+-- States
+local equipped = false
+local mouseDown = false
+local lastShot = 0
+local currentAmmo = 0
+local reserveAmmo = 0
+
+-- Settings
+local gunName = tool.Name
+local gunData = GunConfig[gunName]
+local fireDelay = 60 / gunData.rpm
+
+-- Setup GUI display
+local function updateAmmoDisplay()
+	firstPersonGui.AmmoText.Text = string.format("%d / %d", currentAmmo, reserveAmmo)
+end
+
+-- Firing
+local function shoot()
+	if not equipped or currentAmmo <= 0 then return end
+	if tick() - lastShot < fireDelay then return end
+
+	lastShot = tick()
+	currentAmmo -= 1
+	updateAmmoDisplay()
+
+	local origin = tool.Handle.Position
+	local mouse = player:GetMouse()
+	local direction = (mouse.Hit.Position - origin).Unit * 500
+
+	GunClientModule.playMuzzleFlash(tool)
+	GunClientModule.playFireSound(tool)
+
+	FireEvent:FireServer(gunName, origin, direction)
+end
+
+-- Reloading
+local function reload()
+	if currentAmmo >= gunData.magazineSize or reserveAmmo <= 0 then return end
+
+	GunClientModule.playReloadSound(tool)
+	ReloadEvent:FireServer(gunName)
+
+	local needed = gunData.magazineSize - currentAmmo
+	local toLoad = math.min(needed, reserveAmmo)
+	currentAmmo += toLoad
+	reserveAmmo -= toLoad
+	updateAmmoDisplay()
+end
+
+-- Input bind
+UIS.InputBegan:Connect(function(input, gameProcessed)
+	if not equipped or gameProcessed then return end
+
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		mouseDown = true
+		if gunData.auto then
+			while mouseDown and currentAmmo > 0 and equipped do
+				shoot()
+				RunService.RenderStepped:Wait()
+			end
+		else
+			shoot()
+		end
+	elseif input.KeyCode == Enum.KeyCode.R then
+		reload()
+	end
+end)
+
+UIS.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		mouseDown = false
+	end
+end)
+
+-- Equip and Unequip
+tool.Equipped:Connect(function()
+	equipped = true
+	mouseDown = false
+	firstPersonGui.Enabled = true
+	currentAmmo = gunData.magazineSize
+	reserveAmmo = gunData.reserveAmmo
+	updateAmmoDisplay()
+end)
+
+tool.Unequipped:Connect(function()
+	equipped = false
+	mouseDown = false
+	firstPersonGui.Enabled = false
+end)
